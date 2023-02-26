@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <malloc.h>
 #include <string.h>
+#include <cmath>
 #include "structures.h"
 
 
@@ -19,11 +20,11 @@ void CopyTokenHelp(unsigned short* LengthMask, unsigned short* OffsetMask, unsig
 	unsigned short difference = pDecompressedCurrent - pDecompressedChunkStart;
 
 	// log2 of difference, i.e. num of bits needed to encode difference in binary.
-	*BitCount = 1; // preload the first bit.
-	while (difference >>= 1)
-		(*BitCount)++;
+	//*BitCount = 1; // preload the first bit.
+	//while (difference >>= 1)
+	//	(*BitCount)++;
 
-	//*BitCount = log2(difference)+1;
+	*BitCount = ceil(log2(difference));
 
 	if (*BitCount < 4)
 		*BitCount = 4;
