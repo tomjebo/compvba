@@ -17,14 +17,14 @@ void Finalize() {
 // 2.4.1.3.19.1 CopyToken Help
 void CopyTokenHelp(unsigned short* LengthMask, unsigned short* OffsetMask, unsigned short* BitCount, unsigned short* MaximumLength) {
 
-	unsigned short difference = pDecompressedCurrent - pDecompressedChunkStart;
+	unsigned short difference = (unsigned short)(pDecompressedCurrent - pDecompressedChunkStart);
 
 	// log2 of difference, i.e. num of bits needed to encode difference in binary.
 	//*BitCount = 1; // preload the first bit.
 	//while (difference >>= 1)
 	//	(*BitCount)++;
 
-	*BitCount = ceil(log2(difference));
+	*BitCount = (unsigned short) ceil(log2(difference));
 
 	if (*BitCount < 4)
 		*BitCount = 4;
@@ -35,6 +35,34 @@ void CopyTokenHelp(unsigned short* LengthMask, unsigned short* OffsetMask, unsig
 
 	*MaximumLength = (0xFFFF >> *BitCount) + 3;
 
+}
+
+// 2.4.1.3.11 Byte Copy
+
+void ByteCopy(unsigned char* pCopySource, unsigned char* pDestinationSource, unsigned short ByteCount) {
+	unsigned char* pSrcCurrent = pCopySource;
+	unsigned char* pDstCurrent = pDestinationSource;
+
+	for (int i = 1; i <= ByteCount; i++) {
+		*pDstCurrent = *pSrcCurrent;
+		pDstCurrent++;
+		pSrcCurrent++;
+	}
+}
+
+// 2.4.1.3.19.2 Unpack CopyToken
+void UnpackCopyToken(unsigned char* pCopyToken, unsigned short* Offset, unsigned short* Length) {
+	unsigned short BitCount = 0;
+	unsigned short LengthMask = 0;
+	unsigned short OffsetMask = 0;
+	unsigned short MaximumLength = 0;
+
+	CopyTokenHelp(&LengthMask, &OffsetMask, &BitCount, &MaximumLength);
+
+	*Length = *pCopyToken & LengthMask;
+	unsigned short temp1 = *pCopyToken & OffsetMask;
+	unsigned short temp2 = 16 - BitCount;
+	*Offset = (temp1 >> temp2) + 1; 
 }
 
 // 2.4.1.3.19.4 Matching
@@ -75,7 +103,7 @@ void Matching(unsigned char* pDecompressedEnd, unsigned short* Offset, unsigned 
 
 		*Length = MIN(BestLength, MaximumLength);
 
-		*Offset = pDecompressedCurrent - BestCandidate;
+		*Offset = (unsigned short) (pDecompressedCurrent - BestCandidate);
 	}
 	else {
 		*Length = 0;
@@ -236,7 +264,7 @@ void CompressingADecompressedChunk() {
 	else
 		CompressedFlag = 1;
 
-	Size = pCompressedCurrent - pCompressedChunkStart;
+	Size = (unsigned short)(pCompressedCurrent - pCompressedChunkStart);
 	Header = 0x0000;
 
 	PackCompressedChunkSize(Size, &Header);
@@ -249,6 +277,111 @@ void CompressingADecompressedChunk() {
 	pCompressedChunkStart[0] = (BYTE)(Header & 0x00FF);
 }
 
+// 2.4.1.3.12 Extract CompressedChunkSize
+
+unsigned short ExtractCompressedChunkSize(CompressedChunkHeader* pHeader) {
+	unsigned short temp = *((unsigned short*)pHeader) & 0x0FFF;
+
+	return temp + 3;
+}
+
+// 2.4.1.3.15 Extract CompressedChunkFlag
+
+void ExtractCompressedChunkFlag(CompressedChunkHeader* pHeader, unsigned short* Flag) {
+	unsigned short temp = *((unsigned short*)pHeader) & 0x8000;
+
+	*Flag = temp;
+}
+
+// 2.4.1.3.17 Extract FlagBit
+
+unsigned short ExtractFlagBit(int index, unsigned char Byte) {
+	unsigned short Flag = (Byte >> index) & 0x01;
+	return Flag;
+}
+
+// 2.4.1.3.5 Decompressing a Token
+
+void DecompressingAToken(int index, unsigned char Byte) {
+	unsigned short Flag = ExtractFlagBit(index, Byte);
+	unsigned short Offset, Length;
+	unsigned char* pToken;
+	unsigned char* pCopySource;
+
+	if (Flag == 0) {
+		*pDecompressedCurrent = *pCompressedCurrent;
+		pDecompressedCurrent++;
+		pCompressedCurrent++;
+	}
+	else {
+		pToken = pCompressedCurrent;
+
+		UnpackCopyToken(pToken, &Offset, &Length);
+
+		pCopySource = pDecompressedCurrent - Offset;
+
+		ByteCopy(pCopySource, pDecompressedCurrent, Length);
+
+		pDecompressedCurrent++;
+		pCompressedCurrent++;
+	}
+}
+
+
+// 2.4.1.3.4 Decompressing a TokenSequence
+
+void DecompressingATokenSequence(unsigned char* pCompressedEnd) {
+	unsigned char Byte = *pCompressedCurrent;
+
+	pCompressedCurrent++;
+
+	if (pCompressedCurrent < pCompressedEnd) {
+		for (int i = 0; i <= 7; i++) {
+			if (pCompressedCurrent < pCompressedEnd) {
+				DecompressingAToken(i, Byte);
+			}
+		}
+	}
+}
+
+// 2.4.1.3.3 Decompressing a RawChunk
+
+void DecompressingARawChunk() {
+	memcpy(pDecompressedCurrent, pCompressedCurrent, 4096);
+
+	pDecompressedCurrent += 4096;
+	pCompressedCurrent += 4096;
+}
+
+
+// 2.4.1.3.2 Decompressing a CompressedChunk
+
+void DecompressingACompressedChunk() {
+
+	CompressedChunkHeader* pHeader = (CompressedChunkHeader*)pCompressedChunkStart;
+	unsigned short CompressedChunkFlag;
+
+	unsigned short Size = ExtractCompressedChunkSize(pHeader);
+
+	ExtractCompressedChunkFlag(pHeader, &CompressedChunkFlag);
+
+	pDecompressedChunkStart = pDecompressedCurrent;
+
+	unsigned char* pCompressedEnd = (pCompressedRecordEnd < pCompressedChunkStart + Size) ? pCompressedRecordEnd : pCompressedChunkStart + Size;
+
+	pCompressedCurrent = pCompressedChunkStart + 2;
+
+	if (CompressedChunkFlag == 1) {
+		while (pCompressedCurrent < pCompressedEnd) {
+			DecompressingATokenSequence(pCompressedEnd);
+		}
+	}
+	else {
+		DecompressingARawChunk();
+	}
+
+
+}
 void Initialize(const char* pData) {
 
 	// 2.4.1.2 State Variables
@@ -279,23 +412,25 @@ void Initialize(const char* pData) {
 	for (cChunk = 0; (cChunk < MAX_DECOMPRESSED_CHUNKS) && (cData > (cChunk * MAX_DECOMPRESSED_CHUNK_SIZE) + cCurrent); cChunk++) {
 		for (cCurrent = 0; ((cData > (cChunk * MAX_DECOMPRESSED_CHUNK_SIZE) + cCurrent)
 			&& (cCurrent < (MAX_DECOMPRESSED_CHUNK_SIZE))); cCurrent++) {
-			pDecompressedBuffer->Chunk[cChunk].Data[cCurrent] = 
-			//pDecompressedCurrent[cCurrent + (MAX_DECOMPRESSED_CHUNK_SIZE * cChunk)] =
+			pDecompressedBuffer->Chunk[cChunk].Data[cCurrent] =
+				//pDecompressedCurrent[cCurrent + (MAX_DECOMPRESSED_CHUNK_SIZE * cChunk)] =
 				pData[cCurrent + (MAX_DECOMPRESSED_CHUNK_SIZE * cChunk)];
 		}
 	}
 
-	pDecompressedBufferEnd = (pDecompressedBuffer->Chunk[cChunk-1].Data) + ((cChunk-1) * MAX_DECOMPRESSED_CHUNK_SIZE) + cCurrent;
+	pDecompressedBufferEnd = (pDecompressedBuffer->Chunk[cChunk - 1].Data) + ((cChunk - 1) * MAX_DECOMPRESSED_CHUNK_SIZE) + cCurrent;
 	//pDecompressedBufferEnd = pDecompressedCurrent + cCurrent + (MAX_DECOMPRESSED_CHUNK_SIZE * cChunk) + 1;
 	pDecompressedChunkStart = (unsigned char*)pDecompressedBuffer->Chunk;
 };
 
+
 int main(int argc, char* argv[]) {
 
-	const char* pInput = "#aaabcdefaaaaghijaaaaaklaaamnopqaaaaaaaaaaaarstuvwxyzaaa";
+	const char* pDecompressedInput = "#aaabcdefaaaaghijaaaaaklaaamnopqaaaaaaaaaaaarstuvwxyzaaa";
 
-	Initialize(pInput);
+	Initialize(pDecompressedInput);
 
+	// Compression test
 	// 2.4.1.3.6 Compression algorithm
 
 	pCompressedContainer->SignatureByte = 0x01;
@@ -309,6 +444,34 @@ int main(int argc, char* argv[]) {
 		CompressingADecompressedChunk();
 	}
 
+	Finalize(); // release compression test allocations
 
-	Finalize();
+	// Decompression test
+	// 2.4.1.3.1 Decompression Algorithm
+
+	// CompressedContainer is already set up in testCompressedData, just point pCompressedCurrent to it. 
+
+	pCompressedCurrent = testCompressedData; // from structures.h
+	pCompressedRecordEnd = pCompressedCurrent + sizeof(testCompressedData);
+
+	pDecompressedBuffer = (DecompressedBuffer*)calloc(sizeof(DecompressedBuffer), 1);
+	// But we still need to set these two which are done in Initialize for the compression algorithm.
+	pDecompressedCurrent = (unsigned char*)pDecompressedBuffer;
+	pDecompressedChunkStart = (unsigned char*)pDecompressedBuffer->Chunk;
+
+	if (testCompressedData[0] != 0x01) {
+		printf("Not compressed container, exiting.");
+		return -1;
+	}
+	else {
+
+		pCompressedCurrent++;
+
+		while (pCompressedCurrent < pCompressedRecordEnd) {
+			pCompressedChunkStart = pCompressedCurrent;
+			DecompressingACompressedChunk();
+		}
+	}
+
+	Finalize(); // release decompression test allocations
 };
