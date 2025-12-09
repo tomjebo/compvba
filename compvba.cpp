@@ -24,7 +24,7 @@ void CopyTokenHelp(unsigned short* LengthMask, unsigned short* OffsetMask, unsig
 	//while (difference >>= 1)
 	//	(*BitCount)++;
 
-	*BitCount = (unsigned short) ceil(log2(difference));
+	*BitCount = (unsigned short)ceil(log2(difference));
 
 	if (*BitCount < 4)
 		*BitCount = 4;
@@ -40,18 +40,18 @@ void CopyTokenHelp(unsigned short* LengthMask, unsigned short* OffsetMask, unsig
 // 2.4.1.3.11 Byte Copy
 
 void ByteCopy(unsigned char* pCopySource, unsigned char* pDestinationSource, unsigned short ByteCount) {
-	unsigned char* pSrcCurrent = pCopySource;
-	unsigned char* pDstCurrent = pDestinationSource;
+	//unsigned char* pSrcCurrent = pCopySource;
+	//unsigned char* pDstCurrent = pDestinationSource;
 
 	for (int i = 1; i <= ByteCount; i++) {
-		*pDstCurrent = *pSrcCurrent;
-		pDstCurrent++;
-		pSrcCurrent++;
+		*pDestinationSource = *pCopySource;
+		pDestinationSource++;
+		pCopySource++;
 	}
 }
 
 // 2.4.1.3.19.2 Unpack CopyToken
-void UnpackCopyToken(unsigned char* pCopyToken, unsigned short* Offset, unsigned short* Length) {
+void UnpackCopyToken(unsigned short* pCopyToken, unsigned short* Offset, unsigned short* Length) {
 	unsigned short BitCount = 0;
 	unsigned short LengthMask = 0;
 	unsigned short OffsetMask = 0;
@@ -59,10 +59,10 @@ void UnpackCopyToken(unsigned char* pCopyToken, unsigned short* Offset, unsigned
 
 	CopyTokenHelp(&LengthMask, &OffsetMask, &BitCount, &MaximumLength);
 
-	*Length = *pCopyToken & LengthMask;
+	*Length = (*pCopyToken & LengthMask) + 3;
 	unsigned short temp1 = *pCopyToken & OffsetMask;
 	unsigned short temp2 = 16 - BitCount;
-	*Offset = (temp1 >> temp2) + 1; 
+	*Offset = (temp1 >> temp2) + 1;
 }
 
 // 2.4.1.3.19.4 Matching
@@ -103,7 +103,7 @@ void Matching(unsigned char* pDecompressedEnd, unsigned short* Offset, unsigned 
 
 		*Length = MIN(BestLength, MaximumLength);
 
-		*Offset = (unsigned short) (pDecompressedCurrent - BestCandidate);
+		*Offset = (unsigned short)(pDecompressedCurrent - BestCandidate);
 	}
 	else {
 		*Length = 0;
@@ -290,7 +290,7 @@ unsigned short ExtractCompressedChunkSize(CompressedChunkHeader* pHeader) {
 void ExtractCompressedChunkFlag(CompressedChunkHeader* pHeader, unsigned short* Flag) {
 	unsigned short temp = *((unsigned short*)pHeader) & 0x8000;
 
-	*Flag = temp;
+	*Flag = temp >> 15;
 }
 
 // 2.4.1.3.17 Extract FlagBit
@@ -305,7 +305,8 @@ unsigned short ExtractFlagBit(int index, unsigned char Byte) {
 void DecompressingAToken(int index, unsigned char Byte) {
 	unsigned short Flag = ExtractFlagBit(index, Byte);
 	unsigned short Offset, Length;
-	unsigned char* pToken;
+	unsigned short temp; 
+	unsigned short Token;
 	unsigned char* pCopySource;
 
 	if (Flag == 0) {
@@ -314,9 +315,12 @@ void DecompressingAToken(int index, unsigned char Byte) {
 		pCompressedCurrent++;
 	}
 	else {
-		pToken = pCompressedCurrent;
+		// copy Token from current compressed stream, little endian.
+		Token = (BYTE) pCompressedCurrent[0]; 
+		Token << 8;
+		Token += (BYTE) pCompressedCurrent[1]; 
 
-		UnpackCopyToken(pToken, &Offset, &Length);
+		UnpackCopyToken(&Token, &Offset, &Length);
 
 		pCopySource = pDecompressedCurrent - Offset;
 
@@ -452,19 +456,28 @@ int main(int argc, char* argv[]) {
 	// CompressedContainer is already set up in testCompressedData, just point pCompressedCurrent to it. 
 
 	pCompressedCurrent = testCompressedData; // from structures.h
+	pCompressedContainer = (CompressedContainer*)pCompressedCurrent; // start of compressed blob with signature 0x01
 	pCompressedRecordEnd = pCompressedCurrent + sizeof(testCompressedData);
 
 	pDecompressedBuffer = (DecompressedBuffer*)calloc(sizeof(DecompressedBuffer), 1);
+
+	if (pCompressedContainer == NULL || pDecompressedBuffer == NULL) {
+		printf_s("Failed to allocate memory for workspace buffers!\n");
+		exit(1);
+	}
+
 	// But we still need to set these two which are done in Initialize for the compression algorithm.
 	pDecompressedCurrent = (unsigned char*)pDecompressedBuffer;
 	pDecompressedChunkStart = (unsigned char*)pDecompressedBuffer->Chunk;
 
+	// Signature byte of compressed container.
 	if (testCompressedData[0] != 0x01) {
 		printf("Not compressed container, exiting.");
 		return -1;
 	}
 	else {
 
+		// Start decompressing.
 		pCompressedCurrent++;
 
 		while (pCompressedCurrent < pCompressedRecordEnd) {
