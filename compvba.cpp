@@ -8,11 +8,6 @@
 #include "structures.h"
 
 
-// clean up memory.
-void Finalize() {
-	free(pCompressedContainer);
-	free(pDecompressedBuffer);
-}
 
 // 2.4.1.3.19.1 CopyToken Help
 void CopyTokenHelp(unsigned short* LengthMask, unsigned short* OffsetMask, unsigned short* BitCount, unsigned short* MaximumLength) {
@@ -40,13 +35,13 @@ void CopyTokenHelp(unsigned short* LengthMask, unsigned short* OffsetMask, unsig
 // 2.4.1.3.11 Byte Copy
 
 void ByteCopy(unsigned char* pCopySource, unsigned char* pDestinationSource, unsigned short ByteCount) {
-	//unsigned char* pSrcCurrent = pCopySource;
-	//unsigned char* pDstCurrent = pDestinationSource;
+	unsigned char* pSrcCurrent = pCopySource;
+	unsigned char* pDstCurrent = pDestinationSource;
 
 	for (int i = 1; i <= ByteCount; i++) {
-		*pDestinationSource = *pCopySource;
-		pDestinationSource++;
-		pCopySource++;
+		*pDstCurrent = *pSrcCurrent;
+		pDstCurrent++;
+		pSrcCurrent++;
 	}
 }
 
@@ -305,7 +300,7 @@ unsigned short ExtractFlagBit(int index, unsigned char Byte) {
 void DecompressingAToken(int index, unsigned char Byte) {
 	unsigned short Flag = ExtractFlagBit(index, Byte);
 	unsigned short Offset, Length;
-	unsigned short temp; 
+	unsigned short temp;
 	unsigned short Token;
 	unsigned char* pCopySource;
 
@@ -316,9 +311,9 @@ void DecompressingAToken(int index, unsigned char Byte) {
 	}
 	else {
 		// copy Token from current compressed stream, little endian.
-		Token = (BYTE) pCompressedCurrent[0]; 
-		Token << 8;
-		Token += (BYTE) pCompressedCurrent[1]; 
+		Token = (BYTE)pCompressedCurrent[1];
+		Token <<= 8;
+		Token += (BYTE)pCompressedCurrent[0];
 
 		UnpackCopyToken(&Token, &Offset, &Length);
 
@@ -326,8 +321,8 @@ void DecompressingAToken(int index, unsigned char Byte) {
 
 		ByteCopy(pCopySource, pDecompressedCurrent, Length);
 
-		pDecompressedCurrent++;
-		pCompressedCurrent++;
+		pDecompressedCurrent += Length;
+		pCompressedCurrent += 2;
 	}
 }
 
@@ -427,12 +422,17 @@ void Initialize(const char* pData) {
 	pDecompressedChunkStart = (unsigned char*)pDecompressedBuffer->Chunk;
 };
 
+// clean up memory.
+void Finalize() {
+	free(pCompressedContainer);
+	free(pDecompressedBuffer);
+}
 
 int main(int argc, char* argv[]) {
 
-	const char* pDecompressedInput = "#aaabcdefaaaaghijaaaaaklaaamnopqaaaaaaaaaaaarstuvwxyzaaa";
+	//const char* pDecompressedInput = "#aaabcdefaaaaghijaaaaaklaaamnopqaaaaaaaaaaaarstuvwxyzaaa";
 
-	Initialize(pDecompressedInput);
+	Initialize(pDecompressedInput_3_2_2);
 
 	// Compression test
 	// 2.4.1.3.6 Compression algorithm
@@ -455,9 +455,9 @@ int main(int argc, char* argv[]) {
 
 	// CompressedContainer is already set up in testCompressedData, just point pCompressedCurrent to it. 
 
-	pCompressedCurrent = testCompressedData; // from structures.h
+	pCompressedCurrent = userCompressedData; // from structures.h
 	pCompressedContainer = (CompressedContainer*)pCompressedCurrent; // start of compressed blob with signature 0x01
-	pCompressedRecordEnd = pCompressedCurrent + sizeof(testCompressedData);
+	pCompressedRecordEnd = pCompressedCurrent + sizeof(userCompressedData);
 
 	pDecompressedBuffer = (DecompressedBuffer*)calloc(sizeof(DecompressedBuffer), 1);
 
@@ -471,7 +471,7 @@ int main(int argc, char* argv[]) {
 	pDecompressedChunkStart = (unsigned char*)pDecompressedBuffer->Chunk;
 
 	// Signature byte of compressed container.
-	if (testCompressedData[0] != 0x01) {
+	if (userCompressedData[0] != 0x01) {
 		printf("Not compressed container, exiting.");
 		return -1;
 	}
@@ -486,5 +486,5 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	Finalize(); // release decompression test allocations
+	free(pDecompressedBuffer);
 };
