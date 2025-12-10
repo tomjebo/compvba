@@ -381,6 +381,9 @@ void DecompressingACompressedChunk() {
 
 
 }
+
+// Only used for compression 
+
 void Initialize(const char* pData) {
 
 	// 2.4.1.2 State Variables
@@ -422,15 +425,16 @@ void Initialize(const char* pData) {
 	pDecompressedChunkStart = (unsigned char*)pDecompressedBuffer->Chunk;
 };
 
-// clean up memory.
+// Only used after compression
+
 void Finalize() {
 	free(pCompressedContainer);
 	free(pDecompressedBuffer);
 }
 
-int main(int argc, char* argv[]) {
+// Main code runs both compression and decompression testing per MS-OVBA
 
-	//const char* pDecompressedInput = "#aaabcdefaaaaghijaaaaaklaaamnopqaaaaaaaaaaaarstuvwxyzaaa";
+int main(int argc, char* argv[]) {
 
 	Initialize(pDecompressedInput_3_2_2);
 
