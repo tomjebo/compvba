@@ -300,7 +300,6 @@ unsigned short ExtractFlagBit(int index, unsigned char Byte) {
 void DecompressingAToken(int index, unsigned char Byte) {
 	unsigned short Flag = ExtractFlagBit(index, Byte);
 	unsigned short Offset, Length;
-	unsigned short temp;
 	unsigned short Token;
 	unsigned char* pCopySource;
 
@@ -402,7 +401,7 @@ void Initialize(const char* pData) {
 
 	size_t cData = strnlen_s(pData, (size_t)MAX_INPUT_SIZE + 1);
 
-	if (cData > MAX_INPUT_SIZE) {
+	if ((cData > MAX_INPUT_SIZE) || (cData < 1)) {
 		printf_s("Input buffer is longer than max allowed!\n");
 		exit(1);
 	}
@@ -411,17 +410,16 @@ void Initialize(const char* pData) {
 	int cCurrent = 0;
 
 	// break up and copy the initial data into the decompress chunks.
-	for (cChunk = 0; (cChunk < MAX_DECOMPRESSED_CHUNKS) && (cData > (cChunk * MAX_DECOMPRESSED_CHUNK_SIZE) + cCurrent); cChunk++) {
+	for (cChunk = 0; (cChunk < MAX_DECOMPRESSED_CHUNKS) && (cData > (cChunk * MAX_DECOMPRESSED_CHUNK_SIZE) + cCurrent); cChunk++)
+	{
 		for (cCurrent = 0; ((cData > (cChunk * MAX_DECOMPRESSED_CHUNK_SIZE) + cCurrent)
 			&& (cCurrent < (MAX_DECOMPRESSED_CHUNK_SIZE))); cCurrent++) {
 			pDecompressedBuffer->Chunk[cChunk].Data[cCurrent] =
-				//pDecompressedCurrent[cCurrent + (MAX_DECOMPRESSED_CHUNK_SIZE * cChunk)] =
 				pData[cCurrent + (MAX_DECOMPRESSED_CHUNK_SIZE * cChunk)];
 		}
 	}
 
 	pDecompressedBufferEnd = (pDecompressedBuffer->Chunk[cChunk - 1].Data) + ((cChunk - 1) * MAX_DECOMPRESSED_CHUNK_SIZE) + cCurrent;
-	//pDecompressedBufferEnd = pDecompressedCurrent + cCurrent + (MAX_DECOMPRESSED_CHUNK_SIZE * cChunk) + 1;
 	pDecompressedChunkStart = (unsigned char*)pDecompressedBuffer->Chunk;
 };
 
@@ -459,9 +457,9 @@ int main(int argc, char* argv[]) {
 
 	// CompressedContainer is already set up in testCompressedData, just point pCompressedCurrent to it. 
 
-	pCompressedCurrent = userCompressedData; // from structures.h
+	pCompressedCurrent = Module1_stream; // from structures.h
 	pCompressedContainer = (CompressedContainer*)pCompressedCurrent; // start of compressed blob with signature 0x01
-	pCompressedRecordEnd = pCompressedCurrent + sizeof(userCompressedData);
+	pCompressedRecordEnd = pCompressedCurrent + sizeof(Module1_stream);
 
 	pDecompressedBuffer = (DecompressedBuffer*)calloc(sizeof(DecompressedBuffer), 1);
 
@@ -475,7 +473,7 @@ int main(int argc, char* argv[]) {
 	pDecompressedChunkStart = (unsigned char*)pDecompressedBuffer->Chunk;
 
 	// Signature byte of compressed container.
-	if (userCompressedData[0] != 0x01) {
+	if (Module1_stream[0] != 0x01) {
 		printf("Not compressed container, exiting.");
 		return -1;
 	}
